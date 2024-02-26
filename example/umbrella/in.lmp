@@ -1,0 +1,92 @@
+# 3d Lennard-Jones melt
+
+# variable	x equal 1
+# variable	y equal 1
+# variable	z equal 1
+variable     t equal 50000000
+variable T equal 1.0
+
+# variable f 
+
+variable	xx equal ${f}#*$x
+variable	yy equal ${f}#*$y
+variable	zz equal ${f}#*$z
+
+
+print "xx ${xx}" 
+units		lj
+atom_style	atomic
+
+#lattice		fcc 1.2
+
+region		box block 0 ${xx} 0 ${yy} 0 ${zz}
+create_box	1 box
+#create_atoms	1 box
+
+variable rhoinit equal 0.1
+variable npart equal round(${xx}*${yy}*${zz}*${rhoinit})
+
+create_atoms 1 random  ${npart}  1 box
+mass		1 1.0
+
+
+
+
+pair_style	lj/cut 2.5
+pair_coeff	1 1 1.0 1.0 2.5
+pair_modify shift yes
+
+neighbor	0.3 bin
+neigh_modify	delay 0 every 20 check no
+
+# variable betamu equal -3.865950
+variable mu equal ${betamu}*$T
+
+
+dump mydump all atom 1000 tj-mu${mu}-T$T.atom
+
+min_style cg
+minimize 1.0e-8 1.0e-8 1000 10000
+
+group       gcmcgroup type 1
+compute mdtemp all temp
+compute_modify mdtemp dynamic/dof yes
+
+
+fix mygcmc gcmcgroup  gcmc/umbrella 1 10 0 1 29494 ${T} ${mu} 1.0 umbrella 0.0005 150
+fix	mdnvt all nvt temp 1.0 1.0 0.05
+fix_modify mdnvt temp mdtemp 
+
+# atom count
+
+variable    type1 atom "type==1"
+group       type1 dynamic gcmcgroup var type1
+variable    n1 equal count(type1)
+
+# averaging
+
+# variable    rho equal density
+# variable    p equal press
+# variable    nugget equal 1.0e-8
+# variable        lambda equal 1.0
+# variable        muex equal ${mu}-${T}*ln(density*${lambda}+${nugget})
+# fix         ave all ave/time 10 100 1000 v_rho v_p v_muex v_n1 ave one file rho_vs_p.dat
+# variable    rhoav equal f_ave[1]
+# variable    pav equal f_ave[2]
+# variable    muexav equal f_ave[3]
+# variable    n1av equal f_ave[4]
+
+# output
+
+# variable    tacc equal f_mygcmc[2]/(f_mygcmc[1]+${nugget})
+# variable    iacc equal f_mygcmc[4]/(f_mygcmc[3]+${nugget})
+# variable    dacc equal f_mygcmc[6]/(f_mygcmc[5]+${nugget})
+compute_modify  thermo_temp dynamic yes
+thermo_style    custom step c_mdtemp press pe ke density atoms # v_iacc v_dacc v_tacc v_rhoav v_pav v_muexav v_n1av
+thermo          1000
+
+
+# fix extra all print 200 "${rho}" file density-betamu$	{betamu}-T$T.txt screen no
+fix extra all print 200 "${n1} $(density) $(press)" file n-betamu${betamu}-T$T.txt screen no
+
+run		$t
